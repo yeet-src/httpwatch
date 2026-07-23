@@ -1,0 +1,22 @@
+# build artifacts
+/node_modules/
+/src/index.jsx
+/.build/
+
+# compiled BPF objects
+/bin/*
+!/bin/.gitkeep
+
+# NOTE: vmlinux.h is normally a generated artifact and gitignored, but this
+# project deliberately COMMITS it: the Docker build compiles the BPF object
+# without kernel BTF (the build sandbox has no /sys/kernel/btf), and CO-RE
+# relocates the result to whatever kernel runs the container. So it must ship
+# in the repo — do not re-add it to this ignore list.
+# /src/bpf/include/vmlinux.h
+
+# kernel-matrix run output (build/kernel-matrix.sh)
+/.kmatrix/
+
+# python bytecode (demo/)
+__pycache__/
+*.pyc

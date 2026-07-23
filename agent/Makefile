@@ -1,0 +1,76 @@
+# Build the yeet script project.
+#
+#   make         — build everything (BPF objects + JS bundle)
+#   make bpf     — compile bpf/*.bpf.c into bin/* only
+#   make veristat — load the built object with veristat (verifier check on this kernel)
+#   make bundle  — bundle the JS entry with the vendored esbuild
+#   make postgen — finalize a freshly generated project (git init)
+#   make clangd  — write a local .clangd pointing at the resolved toolchain
+#   make clean   — remove build artifacts
+#
+# This is the build *frontend*: it orchestrates two independent
+# compilers — clang for the BPF objects, esbuild for the JS bundle.
+# Neither understands the other; the JS references compiled objects in
+# bin/ only by path, resolved at runtime. `yeet run` invokes `make`
+# automatically when running this project from a trusted remote source,
+# so the default goal must leave the project runnable.
+#
+# clang, bpftool and esbuild come from the static toolchain resolved by
+# build/toolchain.mk (a shared per-machine cache, or binaries vendored in
+# the bootstrap repo) — so the build needs no system C/BPF toolchain.
+
+.DEFAULT_GOAL := all
+
+include build/toolchain.mk
+include build/bpf.mk
+
+all: bpf bundle
+
+# Bundle the entry with the vendored esbuild. esbuild honors tsconfig `paths`
+# (so `@/` resolves at bundle time), while `yeet:*` builtins and `*.bpf.o`
+# objects stay external. The bundle is written to src/index.jsx, which the
+# entry ladder prefers over src/main.jsx — so once built, that is what runs.
+# The .jsx extension keeps the bundle eligible for component auto-mount.
+# Compiled BPF objects in bin/ are loaded by path at runtime, never imported,
+# so they are not bundled.
+#
+# No npm step: esbuild is the vendored toolchain binary and this project pulls
+# in no npm packages. Add a package.json + `npm install` only if you import
+# one — esbuild then inlines node_modules at bundle time.
+# --define:import.meta.main=false strips the `import.meta.main` self-test blocks
+# (e.g. probe.js's endpoint-dump verifier) from the bundle. Those guards stay
+# dormant when a module is *imported* in an unbundled dev run, but esbuild
+# collapses every source into one module with a single `import.meta`, which yeet
+# marks as the run entry (main=true) — so without this define the self-test runs
+# in production, blocks on its `await`, and calls yeet.exit(), killing the probe.
+ESBUILD_FLAGS := --bundle --format=esm --platform=neutral \
+	--main-fields=module,main --conditions=import,module \
+	--define:import.meta.main=false \
+	--outfile=src/index.jsx --jsx=automatic --jsx-import-source=yeet:tui
+
+# Web build: the headless exporter (src/export.js) is the entry, NOT the TUI
+# (src/main.jsx is kept for reference / local terminal use). esbuild writes the
+# bundle to src/index.jsx, which the entry ladder prefers — so `yeet run .`
+# runs the exporter that prints JSON snapshots the node server consumes.
+bundle: | toolchain
+	$(ESBUILD) src/export.js $(ESBUILD_FLAGS) '--external:yeet:*' '--external:*.bpf.o'
+
+# Post-generation finalize: initialize a git repository with the vendored git
+# (fetched via `vendored-git`). Idempotent — skipped if this is already a repo.
+# The scaffolders (`yeet new`, `scripts/new`) run `make postgen` after creating
+# the project, so the CLI itself stays a thin caller of make.
+postgen: | vendored-git
+	@g="$(GIT)"; [ -x "$$g" ] || g="$$(command -v git 2>/dev/null || true)"; \
+	if [ -e .git ]; then \
+		echo "postgen: already a git repository"; \
+	elif [ -n "$$g" ]; then \
+		echo "postgen: git init"; \
+		"$$g" -c init.templateDir= init -q . || echo "warning: 'git init' failed" >&2; \
+	else \
+		echo "warning: no git available (vendored or host); skipping 'git init'" >&2; \
+	fi
+
+clean: clean-bpf
+	rm -rf node_modules dist src/index.jsx
+
+.PHONY: all bundle clean postgen

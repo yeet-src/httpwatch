@@ -1,0 +1,11 @@
+# Build artifacts are regenerated inside the image — keep the context clean so
+# a host build (different arch/kernel) never leaks in.
+agent/bin
+agent/.build
+agent/src/index.jsx
+agent/demo/__pycache__
+**/node_modules
+.git
+assets
+scratchpad
+*.log
