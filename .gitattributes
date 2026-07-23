@@ -1,0 +1,10 @@
+# Keep GitHub's language stats meaningful. `agent/` is a vendored copy of the
+# httpinspect eBPF probe (mostly a 3MB generated CO-RE header, vmlinux.h, which
+# is committed so the Docker build needs no kernel BTF) — it isn't this
+# project's own source, so exclude it from the language breakdown. Without this
+# the repo shows as ~96% C purely because of vmlinux.h.
+agent/** linguist-vendored=true
+agent/src/bpf/include/vmlinux.h linguist-generated=true
+
+# The dashboard GIF is a binary asset, not code.
+assets/** linguist-vendored=true

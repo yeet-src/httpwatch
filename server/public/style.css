@@ -1,0 +1,400 @@
+/* httpwatch — yeet.cx theme.
+   Three dominant colors: black · Tailwind yellow-300 (#fde047) · white.
+   Everything else is greyscale; only HTTP status codes keep a functional
+   red for 5xx. Type is yeet's: Space Grotesk (display), Inter (body),
+   Iosevka (mono). */
+
+:root {
+  --bg: #000000;
+  --bg-panel: #0b0b0d;
+  --bg-elev: #141417;
+  --bg-row-hover: #17171b;
+  --bg-row-sel: #1f1c0b;      /* faint yellow wash on the selected row */
+  --border: #26262b;
+  --border-soft: #17171a;
+  --fg: #ffffff;
+  --fg-dim: #b4b4bd;
+  --fg-faint: #74747e;
+
+  --accent: #fde047;           /* Tailwind yellow-300 — the brand color */
+  --accent-dim: #fde04726;
+  --accent-line: #fde04740;
+
+  --rate-on: #fde047;          /* live req/s uses the brand yellow */
+  --err: #ff5c73;              /* 5xx only */
+
+  --display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  --mono: "Iosevka", ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── login gate ──────────────────────────────────────────────────────── */
+.gate {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(900px 500px at 50% -10%, #fde0470f, transparent 60%), var(--bg);
+  padding: 24px;
+}
+.gate[hidden] { display: none; }
+.gate-card {
+  width: 100%; max-width: 420px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 28px;
+  text-align: center;
+  box-shadow: 0 20px 60px #000000aa;
+}
+.gate-logo { font-size: 40px; filter: drop-shadow(0 0 12px #fde04788); }
+.gate-card h1 { font-family: var(--display); font-size: 24px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
+.gate-sub { color: var(--fg-dim); font-size: 13.5px; margin: 0 0 22px; line-height: 1.5; }
+.gate-sub b { color: var(--accent); }
+.gate-btn {
+  font-family: var(--display); font-weight: 700; font-size: 14px;
+  background: var(--accent); color: #000; border: none;
+  padding: 11px 22px; border-radius: 9px; cursor: pointer; width: 100%;
+}
+.gate-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.gate-btn:disabled { opacity: .5; cursor: default; }
+.gate-link { margin-top: 20px; }
+.gate-link p { color: var(--fg-dim); font-size: 13px; margin: 0 0 8px; }
+.gate-link a {
+  display: block; font-family: var(--mono); font-size: 13px; word-break: break-all;
+  color: var(--accent); text-decoration: none;
+  padding: 10px 12px; border: 1px dashed var(--accent-line); border-radius: 8px; background: var(--bg);
+}
+.gate-link a:hover { border-style: solid; }
+.gate-wait { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; color: var(--fg-faint); font-family: var(--mono); font-size: 12px; }
+.gate-error { margin-top: 16px; color: var(--err); font-family: var(--mono); font-size: 12px; }
+.gate-error[hidden], .gate-link[hidden] { display: none; }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  display: inline-block; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── top bar ─────────────────────────────────────────────────────────── */
+.topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+/* a clean yellow underline — the one splash of brand color up top */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 12px #fde04766;
+}
+
+.brand { display: flex; align-items: baseline; gap: 11px; }
+.logo { font-size: 19px; filter: drop-shadow(0 0 7px #fde04788); }
+.title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -.5px;
+  color: #fff;
+}
+.title .dot { color: var(--accent); }
+.sub { color: var(--fg-dim); font-size: 12.5px; }
+.meta { display: flex; gap: 8px; align-items: center; }
+
+.pill {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.pill.clickable { cursor: pointer; }
+.pill.clickable:hover { border-color: var(--accent-line); color: var(--fg); }
+
+/* ── popover (interface picker) ──────────────────────────────────────── */
+.popover {
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+  background: #0c0c0f;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 12px 40px #000000cc;
+  font-family: var(--sans);
+}
+.pop-title { font-family: var(--display); font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--fg-faint); margin: 2px 4px 8px; }
+.pop-sep { height: 1px; background: var(--border-soft); margin: 6px 0; }
+.pop-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; cursor: pointer; font-family: var(--mono); font-size: 13px; color: var(--fg); }
+.pop-item:hover { background: var(--bg-row-hover); }
+.pop-item input { accent-color: var(--accent); width: 15px; height: 15px; }
+.pop-empty { color: var(--fg-faint); font-family: var(--mono); font-size: 12px; padding: 6px; }
+.pop-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.pop-apply {
+  font-family: var(--display); font-weight: 600; font-size: 12px;
+  background: var(--accent); color: #000; border: none;
+  padding: 6px 14px; border-radius: 7px; cursor: pointer;
+}
+.pop-apply:hover { filter: brightness(1.08); }
+.conn-on { color: #000; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.conn-off { color: var(--err); border-color: #43303099; }
+.conn-wait { color: var(--accent); border-color: var(--accent-line); }
+
+/* "built with yeet" badge — black pill, yellow border/text */
+.yeet-badge {
+  display: inline-flex;
+  padding: 3px 11px;
+  border-radius: 999px;
+  text-decoration: none;
+  background: var(--bg);
+  border: 1px solid var(--accent-line);
+}
+.yeet-badge-inner {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--fg-dim); font-family: var(--mono); font-size: 11.5px; white-space: nowrap;
+}
+.yeet-badge-inner b { color: var(--accent); font-weight: 700; letter-spacing: .3px; }
+.yeet-badge:hover { border-color: var(--accent); }
+.yeet-badge:hover .yeet-badge-inner { color: var(--fg); }
+
+/* ── layout ──────────────────────────────────────────────────────────── */
+.layout {
+  flex: 1;
+  position: relative;          /* containing block for the detail overlay */
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  padding: 16px;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* `.panel`'s display:flex outranks the UA [hidden] rule, so a hidden panel
+   would still show (and drop to a second grid row). Re-hide it explicitly. */
+.panel[hidden] { display: none; }
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.panel-head h2 { margin: 0; font-family: var(--display); font-size: 12.5px; font-weight: 600; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px; }
+.totals { font-family: var(--mono); font-size: 12px; color: var(--fg-dim); display: flex; gap: 16px; flex-wrap: wrap; }
+.totals b { color: var(--accent); font-weight: 600; }
+
+/* ── table ───────────────────────────────────────────────────────────── */
+.table-wrap { position: relative; overflow: auto; flex: 1; }
+table.endpoints { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+table.endpoints thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-elev);
+  color: var(--fg-faint);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .6px;
+  text-align: left;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--fg-dim); }
+th.sorted-desc::after { content: " ▼"; color: var(--accent); }
+th.sorted-asc::after { content: " ▲"; color: var(--accent); }
+.col-num, td.col-num { text-align: right; }
+.col-rank { text-align: right; width: 44px; color: var(--fg-faint); }
+.col-last { text-align: right; width: 66px; }
+.col-method { width: 92px; }
+.col-host { width: 22%; }
+.col-path { width: auto; }
+/* Numeric columns must never elide — their values are short and meaningful.
+   A content-sized min-width overrides the generic `td { max-width: 0 }` (min
+   wins over max), so each reserves room for its widest value (p95 is longest:
+   `12.34s`, `0.99ms`) yet still flexes as the window resizes. box-sizing is
+   border-box, so these include the 22px cell padding. */
+.col-count { min-width: 74px; }
+.col-rate  { min-width: 62px; }
+.col-p95   { min-width: 82px; }
+/* Header alignment must match the body: numeric/rank/last columns right-align.
+   Scoped to `table.endpoints thead th` so it beats the base `thead th` rule. */
+table.endpoints thead th.col-num,
+table.endpoints thead th.col-rank,
+table.endpoints thead th.col-last { text-align: right; }
+
+table.endpoints tbody tr { border-bottom: 1px solid var(--border-soft); cursor: pointer; transition: background .08s; }
+table.endpoints tbody tr:hover { background: var(--bg-row-hover); }
+table.endpoints tbody tr.selected { background: var(--bg-row-sel); box-shadow: inset 2px 0 0 var(--accent); }
+table.endpoints td { padding: 6px 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+/* paths are shown in full — wrap instead of eliding. Scoped to
+   `table.endpoints td.col-path` so it outranks the generic `table.endpoints td`
+   ellipsis rule (equal element count, extra class wins). */
+table.endpoints td.col-path { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; word-break: break-all; }
+td.col-count b { color: var(--accent); }
+td.col-rate .live { color: var(--rate-on); font-weight: 600; }
+td.col-rate .idle { color: var(--fg-faint); }
+.host { color: var(--fg-dim); }
+.path { color: var(--fg); }
+
+/* methods stay monochrome — the palette is black/yellow/white, so METHOD is
+   just bold white and the column header carries the meaning */
+.method { font-weight: 700; color: #fff; }
+
+.empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--fg-faint); font-family: var(--mono); font-size: 13px; pointer-events: none;
+}
+
+/* ── detail panel ────────────────────────────────────────────────────── */
+/* An overlay, not a layout column: it floats above the table on a higher z so
+   the endpoint list keeps its full width instead of being squeezed. Anchored to
+   the content area (`.layout` is position:relative) and inset to line up with
+   the list panel's edges. */
+.detail-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(460px, calc(100% - 32px));
+  z-index: 20;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, .6);
+  /* Closed state — a slight slide + fade. visibility is transitioned with a
+     delay so the panel stays painted through the fade-out, then drops out (and
+     goes non-interactive) once it's gone. Toggled by the `.open` class. */
+  opacity: 0;
+  transform: translateX(12px);
+  visibility: hidden;
+  transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
+}
+.detail-panel.open {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  transition: opacity .18s ease, transform .18s ease, visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-panel, .detail-panel.open { transition: visibility 0s; transform: none; }
+}
+.detail-panel .close {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border); color: var(--fg-dim);
+  border-radius: 7px; cursor: pointer; width: 28px; height: 28px; padding: 0;
+}
+.detail-panel .close svg { display: block; }
+.detail-panel .close:hover { color: #000; border-color: var(--accent); background: var(--accent); }
+#detail-body { flex: 1; min-height: 0; padding: 15px; overflow: auto; }
+
+.d-endpoint { font-family: var(--mono); font-size: 14px; margin-bottom: 15px; word-break: break-all; }
+.d-endpoint .method { margin-right: 4px; }
+.d-endpoint .path { color: var(--fg); }
+
+.fields { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font-family: var(--mono); font-size: 13px; margin-bottom: 18px; }
+.fields dt { color: var(--fg-faint); }
+.fields dd { margin: 0; color: var(--fg); }
+.fields dd .dim { color: var(--fg-faint); }
+.big { color: var(--accent); font-weight: 700; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--mono); font-size: 12px; padding: 2px 9px; border-radius: 7px;
+  background: var(--bg-elev); border: 1px solid var(--border); color: var(--fg);
+}
+.chip .n { color: var(--fg-faint); }
+/* 2xx/3xx read as normal white; 4xx is the brand yellow; 5xx the one red */
+.chip.s2 .code { color: #fff; }
+.chip.s3 .code { color: var(--fg-dim); }
+.chip.s4 { border-color: var(--accent-line); } .chip.s4 .code { color: var(--accent); }
+.chip.s5 { border-color: #4a2a30; } .chip.s5 .code { color: var(--err); }
+
+/* ── live request stream ─────────────────────────────────────────────── */
+/* Each completed request, newest first, color-coded by response class:
+   2xx green · 3xx cyan · 4xx yellow · 5xx red · unknown grey. */
+.req-block { margin-top: 15px; }
+.req-stream {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 320px;
+  background: var(--bg-elev);
+}
+.req-row {
+  display: grid;
+  grid-template-columns: 54px 84px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border-soft);
+  border-left: 3px solid var(--border);
+}
+.req-row.fresh { animation: reqIn .5s ease-out; }
+.req-row:last-child { border-bottom: none; }
+.req-code { font-weight: 700; }
+.req-lat { color: var(--fg-dim); text-align: right; }
+.req-time { color: var(--fg-faint); text-align: right; }
+
+@keyframes reqIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+.req-row.s2 { border-left-color: #2eb67d; } .req-row.s2 .req-code { color: #2eb67d; }
+.req-row.s3 { border-left-color: #36c5f0; } .req-row.s3 .req-code { color: #36c5f0; }
+.req-row.s4 { border-left-color: var(--accent); } .req-row.s4 .req-code { color: var(--accent); }
+.req-row.s5 { border-left-color: var(--err); } .req-row.s5 .req-code { color: var(--err); }
+.req-row.s0 { border-left-color: var(--fg-faint); } .req-row.s0 .req-code { color: var(--fg-faint); }
+
+.spark-block { margin-top: 15px; }
+.spark-block h3 { margin: 0 0 6px; font-family: var(--display); font-size: 11px; font-weight: 600; color: var(--fg-faint); text-transform: uppercase; letter-spacing: .6px; }
+.spark { width: 100%; height: 54px; display: block; background: var(--bg-elev); border: 1px solid var(--border-soft); border-radius: 7px; }
+.spark-empty { color: var(--fg-faint); font-family: var(--mono); font-size: 12px; padding: 8px 0; }
+
+/* ── status bar ──────────────────────────────────────────────────────── */
+.statusbar {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 8px 18px; border-top: 1px solid var(--border);
+  background: var(--bg); color: var(--fg-faint);
+  font-family: var(--mono); font-size: 11.5px; flex-wrap: wrap;
+}
+
+@media (max-width: 860px) {
+  .col-host { width: auto; }
+  .sub { display: none; }
+}

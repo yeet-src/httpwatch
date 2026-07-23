@@ -1,0 +1,12 @@
+# Build artifacts (regenerated inside the Docker build). vmlinux.h is NOT here
+# on purpose — see agent/.gitignore for why it must be committed.
+agent/bin/
+agent/.build/
+agent/src/index.jsx
+
+# node
+**/node_modules/
+
+# local scratch / logs
+*.log
+scratchpad/

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>httpwatch · live HTTP endpoints</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%9B%B0%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <!-- yeet.cx type: Space Grotesk (display) + Inter (body). Fetched from Google
+       Fonts when the browser has internet; strong system fallbacks otherwise. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" />
+  <link rel="stylesheet" href="/style.css" />
+  <script>
+    // Injected by the server at request time — the latest snapshot so the page
+    // hydrates without waiting for the first SSE frame. Falls back to null.
+    window.__BOOT__ = /*__BOOT__*/null;
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🛰️</span>
+      <span class="title">httpwatch</span>
+      <span class="sub">live plaintext-HTTP endpoints on this host</span>
+    </div>
+    <div class="meta">
+      <span id="iface" class="pill">iface —</span>
+      <span id="conn" class="pill conn-off">connecting…</span>
+      <a class="yeet-badge" href="https://yeet.cx" target="_blank" rel="noopener" title="Built with yeet + eBPF">
+        <span class="yeet-badge-inner">built with <b>yeet</b></span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Login gate: shown until `yeet whoami` resolves. -->
+  <div id="gate" class="gate" hidden>
+    <div class="gate-card">
+      <div class="gate-logo">🛰️</div>
+      <h1>httpwatch</h1>
+      <p class="gate-sub">This dashboard is locked. Sign in with <b>yeet</b> to continue.</p>
+
+      <button id="gate-login" class="gate-btn">Sign in with yeet</button>
+
+      <div id="gate-link" class="gate-link" hidden>
+        <p>A tab opened to authorize. Didn't open? Use this link:</p>
+        <a id="gate-url" href="#" target="_blank" rel="noopener"></a>
+        <div class="gate-wait"><span class="spinner"></span> waiting for you to log in…</div>
+      </div>
+
+      <div id="gate-error" class="gate-error" hidden></div>
+    </div>
+  </div>
+
+  <main class="layout">
+    <section class="panel list-panel">
+      <div class="panel-head">
+        <h2>Endpoints</h2>
+        <div class="totals" id="totals"></div>
+      </div>
+      <div class="table-wrap">
+        <table class="endpoints" id="table">
+          <thead>
+            <tr>
+              <th class="col-rank">#</th>
+              <th class="col-method sortable" data-sort="method">METHOD</th>
+              <th class="col-host sortable" data-sort="host">HOST</th>
+              <th class="col-path sortable" data-sort="path">PATH</th>
+              <th class="col-num col-count sortable sorted-desc" data-sort="count">COUNT</th>
+              <th class="col-num col-rate sortable" data-sort="rate">REQ/S</th>
+              <th class="col-num col-p95 sortable" data-sort="p95">p95</th>
+              <th class="col-last sortable" data-sort="last">LAST</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty" id="empty">Waiting for plaintext HTTP traffic…</div>
+      </div>
+    </section>
+
+    <aside class="panel detail-panel" id="detail">
+      <div class="panel-head">
+        <h2>Endpoint detail</h2>
+        <button class="close" id="detail-close" title="Collapse panel (Esc)" aria-label="Collapse panel">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 12H3"/><path d="m11 18 6-6-6-6"/><path d="M21 5v14"/></svg>
+        </button>
+      </div>
+      <div id="detail-body"></div>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="foot-left"></span>
+    <span id="foot-right">plaintext HTTP only · HTTPS is ciphertext at this layer</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
