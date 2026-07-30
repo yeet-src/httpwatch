@@ -219,40 +219,69 @@ static __always_inline int emit_chunk(struct __sk_buff *skb, __u32 poff, __u32 o
                                       __u16 sport, __u16 dport, __u8 family, __u8 dir,
                                       __u8 kind, int trunc, int do_scan, __u32 *status)
 {
-    /* Re-derive n's bounds here, at the call that needs them. Every caller
-       computes n as `rem < CHUNK_MAX ? rem : CHUNK_MAX`, so it is bounded by
-       construction — but on Linux 6.6 that upper bound is lost when the value is
-       spilled to the stack and reloaded (later kernels track the range through a
-       32-bit spill; 6.6 does not). The load is then rejected with "R4 unbounded
-       memory access, use 'var &= const' or 'if (var < const)'" — while `umin=1`,
-       from the `if (rem)` guard, survives. So this is not a redundant clamp: it's
-       the difference between loading and not loading on 6.6.
-       (Verified: 6.6.144 rejected at 1585 insns; 6.12+ accept without it.)
+    /* Re-derive the length's bounds here, at the call that needs them. Every
+       caller computes n as `rem < CHUNK_MAX ? rem : CHUNK_MAX`, so it is bounded
+       by construction — but on Linux 6.6 that upper bound is lost when the value
+       is spilled to the stack and reloaded (later kernels track the range through
+       a 32-bit spill; 6.6 does not). The load is then rejected with "R4 unbounded
+       memory access, use 'var &= const' or 'if (var < const)'". So neither guard
+       below is redundant: they are the difference between loading and not loading
+       on 6.6.
+       (Verified: 6.6.144 rejected at 1585 insns; 6.12+ accept without them.)
 
-       An AND with a constant is the one narrowing every verifier performs, and
-       DATA_MAX is a power of two, so CHUNK_MAX is exactly its mask — this is a
-       no-op at runtime. The AND can in principle yield 0, which no helper accepts
-       as a size, so restore the lower bound too rather than leaving the next
-       kernel to reject it from the other side.
+       Both bounds must land in the *64-bit* domain, which is why this is a __u64
+       and not the __u32 parameter. bpf_skb_load_bytes' length is ARG_CONST_SIZE,
+       and that check reads umin_value/umax_value — the 64-bit pair. A __u32 makes
+       these 32-bit compares (BPF_JMP32), and 6.6 refines only the u32_* bounds
+       from those; lifting a 32-bit refinement into the 64-bit range came with the
+       later reg_bounds rework.
 
-       barrier_var first, and it is not optional: LLVM can prove n <= CHUNK_MAX
-       from the caller's ternary, so a bare AND gets folded away or hoisted above
-       the spill — measured, the object had the mask 68 times and not once at a
-       load site, where r4 was still filled straight off the stack. The barrier
-       makes n opaque at exactly this point, so the AND is emitted here, after the
-       fill, which is the only place it buys anything. (Unlike the earlier
+       Both guards are comparisons, and the shapes are not interchangeable:
+
+         * An `&= CHUNK_MAX` mask cannot supply the *lower* bound, it destroys it.
+           The result's range is derived from the tnum, and (0x0; 0x7ff) admits
+           zero, so umin goes to 0 — even though the callers hand this function a
+           value the verifier already knows is >= 1. That was the previous version
+           of this code, and 6.6 rejected it with "R4 invalid zero-sized read:
+           u64=[0,2046]" (the message names the domain). An unsigned `>` supplies
+           the upper bound instead and leaves the lower one alone.
+
+         * The zero guard must be *signed*. On 6.6, BPF_JEQ's false branch gets no
+           range refinement at all — only the equal side is marked known — so
+           `len == 0` reads as a no-op to the verifier and umin stays 0. Observed
+           directly: `309: (15) if r8 == 0x0` followed by `310:` still showing
+           umax=2046 and no umin. Signed compares do refine, and 6.6's
+           __reg_deduce_bounds lifts a non-negative smin into umin, so `s< 1`
+           yields umin=1. Unsigned `< 1` is not an option: it is identical to
+           `== 0` and LLVM canonicalizes it straight back to BPF_JEQ.
+
+       At runtime the signed test is exactly the zero test it looks like: len is
+       widened from a __u32, so it can never exceed U32_MAX and never appears
+       negative as an s64. It costs ~2k insns of verifier work (14302 on 6.6,
+       58738 on 6.16) against the 1M limit.
+
+       barrier_var first, and it is not optional: LLVM can prove the value is
+       <= CHUNK_MAX from the caller's ternary, so bare guards get folded away or
+       hoisted above the spill — measured, an earlier mask-based version had the
+       mask 68 times and not once at a load site, where r4 was still filled
+       straight off the stack. The barrier makes the value opaque at exactly this
+       point, so the compares are emitted here, after the fill, which is the only
+       place they buy anything. It is also what stops LLVM proving len >= 0 and
+       narrowing the signed test back into an equality. (Unlike the earlier
        barrier this file's notes reject: that one would have sat in a loop LLVM
        needed to unroll. The chunks are unrolled by hand now, so nothing
-       structural depends on this staying asm-free.) */
-    barrier_var(n);
-    n &= CHUNK_MAX;
-    if (!n)
+       structural depends on this staying asm-free.)
+
+       Verified on a real 6.6.144 VM, not by inspection — both programs load. */
+    __u64 len = n;
+    barrier_var(len);
+    if ((__s64)len <= 0 || len > CHUNK_MAX)
         return -1;
 
     struct http_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
     if (!e)
         return -1;
-    if (bpf_skb_load_bytes(skb, poff + off, e->data, n) < 0) {
+    if (bpf_skb_load_bytes(skb, poff + off, e->data, len) < 0) {
         bpf_ringbuf_discard(e, 0);
         return -1;
     }
@@ -265,9 +294,9 @@ static __always_inline int emit_chunk(struct __sk_buff *skb, __u32 poff, __u32 o
     e->kind      = kind;
     e->flags     = trunc ? F_TRUNC : 0;
     e->total_len = plen - off;
-    e->captured  = n;
+    e->captured  = len;
     if (do_scan && kind == KIND_RESPONSE)
-        *status = status_of(e->data, n);
+        *status = status_of(e->data, len);
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
