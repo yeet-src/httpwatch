@@ -1739,7 +1739,7 @@ function startApp() {
   // so pull a fresh page state by reloading (simplest, gets the inlined data).
   // Nothing is tracked on this path — the reload runs startApp again for real.
   if (!snapshot) { location.reload(); return; }
-  // The yeet identity behind the gate — a display name from `yeet whoami`, the
+  // The yeet identity behind the gate — the owner id from `yeet whoami`, the
   // only handle this server has for who is looking at it.
   if (boot.auth?.identity) window.hwIdentify?.(boot.auth.identity);
   track("dashboard_opened", {

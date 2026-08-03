@@ -18,6 +18,21 @@ const ANSI = /\[[0-9;?]*[ -/]*[@-~]|\][^]*(?:|\\)/g;
 const stripAnsi = (s) => s.replace(ANSI, "");
 
 const LOGIN_URL_RE = /Please login at:\s*(\S+)/i;
+
+// `yeet whoami` prints a banner ("Currently logged in as:") before the fields,
+// so the first non-empty line is prose, not an id. Take the labelled field;
+// fall back to a bare USER- token in case the label is ever reworded.
+const OWNER_ID_RE = /^\s*Owner ID:\s*(\S+)/im;
+const USER_ID_RE = /\bUSER-\S+/;
+
+/** Pull the owner id (`USER-…`) out of `yeet whoami` stdout, or null. */
+export function parseOwnerId(stdout) {
+  const text = stripAnsi(String(stdout));
+  const labelled = OWNER_ID_RE.exec(text)?.[1];
+  if (labelled?.startsWith("USER-")) return labelled;
+  return USER_ID_RE.exec(text)?.[0] || null;
+}
+
 const REFRESH_MS = 10_000;      // background re-check of login state
 const URL_TIMEOUT_MS = 20_000;  // give up waiting for `yeet login` to print a URL
 
@@ -42,7 +57,7 @@ export function createAuth({ yeetBin, socket, userSocket }) {
     });
   }
 
-  /** `yeet whoami` → first non-empty stdout line, for a display name. */
+  /** `yeet whoami` → the owner id, for a stable per-user handle. */
   function whoamiName() {
     return new Promise((resolve) => {
       let out = "";
@@ -50,8 +65,7 @@ export function createAuth({ yeetBin, socket, userSocket }) {
       c.stdout.on("data", (d) => (out += d));
       c.on("error", () => resolve(null));
       c.on("close", () => {
-        const line = stripAnsi(out).split("\n").map((s) => s.trim()).filter(Boolean)[0];
-        resolve(line || null);
+        resolve(parseOwnerId(out));
       });
     });
   }
