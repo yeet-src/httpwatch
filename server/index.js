@@ -39,6 +39,11 @@ import { renderBody, renderDetail, renderLoginRequired, renderOverview, wantsMar
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(__dirname, "public");
 
+/* What this dashboard is called in analytics. Names the PRODUCT, not the container or the
+ * host — so it is a constant here, and the one line that differs when this wiring is copied
+ * to the next dashboard. See `posthogKey` below. */
+const APP = "httpwatch";
+
 const config = {
   port: Number(process.env.PORT || 8080),
   host: process.env.HOST || "0.0.0.0",
@@ -62,9 +67,14 @@ const config = {
   // other way to know how it's reachable from someone's laptop.
   publicUrl: (process.env.PUBLIC_URL || "").replace(/\/+$/, ""),
   alertsFile: process.env.ALERTS_FILE === "" ? null : (process.env.ALERTS_FILE || join(__dirname, "alerts.json")),
-  // Product analytics for the browser dashboard, through the yeet PostHog proxy
-  // rather than us.posthog.com. POSTHOG_KEY="" turns it off; nothing about the
-  // captured traffic is sent either way (see public/analytics.js).
+  /* Product analytics for the browser dashboard, through the yeet PostHog proxy
+   * rather than us.posthog.com. POSTHOG_KEY="" turns it off; nothing about the
+   * captured traffic is sent either way (see public/analytics.js).
+   *
+   * Several of these dashboards report into the SAME PostHog project, so every event says
+   * which product raised it — `app`, stamped on the way out by analytics.js. Not cosmetic:
+   * `dashboard_opened`, `login_started` and `alert_rule_created` exist in more than one of
+   * them with different properties, so unlabelled they are one series that means nothing. */
   posthogKey: process.env.POSTHOG_KEY === "" ? null
     : (process.env.POSTHOG_KEY || "phc_nZgQxuBUL76Lhk5diKf3aBN3NtMUzJsigw4TbDRoUopa"),
   posthogHost: (process.env.POSTHOG_HOST || "https://ph.yeet.cx").replace(/\/+$/, ""),
@@ -196,7 +206,7 @@ async function serveIndex(res, reqUrl = "/") {
     config: { keepQuery: config.keepQuery, iface: currentIface || null, bodies: currentBodies,
               slackChannel: config.slackChannel,
               analytics: config.posthogKey
-                ? { key: config.posthogKey, host: config.posthogHost, debug: config.posthogDebug }
+                ? { key: config.posthogKey, host: config.posthogHost, app: APP, debug: config.posthogDebug }
                 : null },
     alerts: auth.isLoggedIn() ? alerts.list() : [],
     caps,

@@ -57,6 +57,23 @@
 
   const URL_PROPS = ["$current_url", "$referrer", "$initial_current_url", "$initial_referrer", "$pathname"];
 
+  /* Which product these events came from. Several of these dashboards report into ONE
+   * PostHog project, and the event names collide: `dashboard_opened`, `login_started` and
+   * `alert_rule_created` all exist in more than one of them, with different properties on
+   * each — so unlabelled they are a single series that means nothing.
+   *
+   * Stamped in `sanitize_properties` rather than merged into each `hwTrack` call, because
+   * the events raised from app.js are not the only events sent: `$pageview` and
+   * `$pageleave` come from the library itself and never pass through here. A per-call
+   * property would label the deliberate events and leave the automatic ones anonymous,
+   * which is the half that quietly pollutes the shared project. A registered super property
+   * would cover them too, but only after `init()` returns — this hook runs per event on the
+   * way out, so the initial pageview cannot beat it.
+   *
+   * From the server rather than hardcoded here, so this file stays copyable between
+   * dashboards and the one thing that differs lives in each server's config. */
+  const app = cfg.app || "unknown";
+
   const script = document.createElement("script");
   script.src = `${cfg.host}/static/array.js`;
   script.async = true;
@@ -78,7 +95,10 @@
       disable_session_recording: true,
       autocapture: false,
       debug: !!cfg.debug,
+      // Runs on the way out for EVERY event, the library's own included — which is why
+      // `app` is stamped here. See the note by it.
       sanitize_properties: (props) => {
+        props.app = app;
         for (const k of URL_PROPS) if (k in props) props[k] = sanitizeUrl(props[k]);
         return props;
       },

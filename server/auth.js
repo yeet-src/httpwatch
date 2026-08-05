@@ -20,21 +20,37 @@ const stripAnsi = (s) => s.replace(ANSI, "");
 const LOGIN_URL_RE = /Please login at:\s*(\S+)/i;
 
 // `yeet whoami` prints a banner ("Currently logged in as:") before the fields,
-// so the first non-empty line is prose, not an id. Take the labelled field;
-// fall back to a bare USER- token in case the label is ever reworded.
+// so the first non-empty line is prose, not an id. Take the labelled field.
+//
+// The owner is whoever the host is registered to — an ORG- id for a host owned
+// by an organisation, a USER- id for a personal one. yeet itself treats
+// owner_id as an opaque string (common/src/objects/whoami: `owner_id: String`),
+// so don't validate the prefix; anything id-shaped is the id. The fallback only
+// exists in case the `Owner ID:` label is ever reworded.
 const OWNER_ID_RE = /^\s*Owner ID:\s*(\S+)/im;
-const USER_ID_RE = /\bUSER-\S+/;
+const ANY_ID_RE = /\b[A-Z][A-Z0-9]*-[A-Z0-9]{8,}\b/;
 
-/** Pull the owner id (`USER-…`) out of `yeet whoami` stdout, or null. */
+/** Pull the owner id (`ORG-…`/`USER-…`) out of `yeet whoami` stdout, or null. */
 export function parseOwnerId(stdout) {
   const text = stripAnsi(String(stdout));
   const labelled = OWNER_ID_RE.exec(text)?.[1];
-  if (labelled?.startsWith("USER-")) return labelled;
-  return USER_ID_RE.exec(text)?.[0] || null;
+  if (labelled) return labelled;
+  // Host ID is labelled too, so a bare scan must not pick it up by accident.
+  const m = ANY_ID_RE.exec(text.replace(/^\s*Host ID:.*$/gim, ""));
+  return m?.[0] || null;
 }
 
-const REFRESH_MS = 10_000;      // background re-check of login state
+// Background re-check of login state. Logged out, the poll is what notices the
+// user finishing the login in their browser, so it has to be brisk. Logged in,
+// it only catches the rare logout/expiry, and every tick is a `yeet whoami`
+// round trip — so back right off.
+const REFRESH_MS = 10_000;
+const REFRESH_LOGGED_IN_MS = 5 * 60_000;
 const URL_TIMEOUT_MS = 20_000;  // give up waiting for `yeet login` to print a URL
+
+// `whoami` runs on a timer, so leaving analytics on would have every host
+// idling on the dashboard trickle events into our own pipeline forever.
+const WHOAMI_ENV = { NO_COLOR: "1", YEET_NO_ANALYTICS: "1" };
 
 export function createAuth({ yeetBin, socket, userSocket }) {
   const globalArgs = [];
@@ -51,7 +67,7 @@ export function createAuth({ yeetBin, socket, userSocket }) {
   /** `yeet whoami -q` → exit 0 means logged in. */
   function whoamiQuiet() {
     return new Promise((resolve) => {
-      const c = spawn(yeetBin, [...globalArgs, "whoami", "-q"], { stdio: "ignore", env: { ...process.env, NO_COLOR: "1" } });
+      const c = spawn(yeetBin, [...globalArgs, "whoami", "-q"], { stdio: "ignore", env: { ...process.env, ...WHOAMI_ENV } });
       c.on("error", () => resolve(false));
       c.on("close", (code) => resolve(code === 0));
     });
@@ -61,7 +77,7 @@ export function createAuth({ yeetBin, socket, userSocket }) {
   function whoamiName() {
     return new Promise((resolve) => {
       let out = "";
-      const c = spawn(yeetBin, [...globalArgs, "whoami"], { stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, NO_COLOR: "1" } });
+      const c = spawn(yeetBin, [...globalArgs, "whoami"], { stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, ...WHOAMI_ENV } });
       c.stdout.on("data", (d) => (out += d));
       c.on("error", () => resolve(null));
       c.on("close", () => {
@@ -75,6 +91,10 @@ export function createAuth({ yeetBin, socket, userSocket }) {
     loggedIn = await whoamiQuiet();
     if (loggedIn && !identity) identity = await whoamiName();
     if (!loggedIn) identity = null;
+    // A flip changes which cadence applies — re-arm now rather than letting the
+    // pending tick run at the old rate (a login otherwise keeps the 10s poll for
+    // one more round).
+    if (loggedIn !== was) schedule();
     return loggedIn !== was;
   }
 
@@ -124,9 +144,21 @@ export function createAuth({ yeetBin, socket, userSocket }) {
     return { loggedIn, identity, loginUrl, loginPending: !!loginProc, error: loginError };
   }
 
-  // Prime + poll in the background so request handlers read a cached flag.
-  refresh();
-  const timer = setInterval(refresh, REFRESH_MS);
+  // Prime + poll in the background so request handlers read a cached flag. The
+  // timer re-arms itself after each check rather than running at a fixed rate,
+  // so the cadence follows the login state (and so a slow `whoami` can't stack
+  // up behind itself).
+  let timer = null;
+  let stopped = false;
+  function schedule() {
+    if (stopped) return;
+    clearTimeout(timer);
+    timer = setTimeout(tick, loggedIn ? REFRESH_LOGGED_IN_MS : REFRESH_MS);
+  }
+  async function tick() {
+    try { await refresh(); } finally { schedule(); }
+  }
+  refresh().then(schedule, schedule);
 
   return {
     isLoggedIn: () => loggedIn,
@@ -134,7 +166,8 @@ export function createAuth({ yeetBin, socket, userSocket }) {
     startLogin,
     state,
     stop() {
-      clearInterval(timer);
+      stopped = true;
+      clearTimeout(timer);
       try { loginProc?.kill("SIGTERM"); } catch { /* ignore */ }
     },
   };
